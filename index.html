@@ -98,7 +98,7 @@ input[type=range]{accent-color:#ffcb05}
 <div id="select-screen" class="screen">
   <div class="pokeball"></div>
   <div class="title"><span>포케리듬 TUBE</span><br>유튜브 재생 전용 에디션</div>
-  <div class="subtitle">⚡ 4레인 낙하형 • 탭 / 홀드 / 플릭 • 📺 유튜브 재생 전용 (차단망 OK)</div>
+  <div class="subtitle">⚡ 8칸 낙하형 • 탭 / 홀드 / 슬라이드 / 플릭 • 📺 유튜브 재생 전용</div>
   <div id="songList"></div>
   <div class="diff-row" id="diffRow">
     <button class="diff-btn" data-diff="EASY">EASY<span class="lv">Lv.5 ★★★★★</span></button>
@@ -129,11 +129,11 @@ input[type=range]{accent-color:#ffcb05}
     <button class="btn-sub" id="customBpmBtn">⚙ 커스텀 BPM: <b id="customBpmVal">150</b></button>
   </div>
   <div class="help hidden" id="howBox">
-    <b>🎮 조작법 (4레인)</b><br>
-    키보드: <kbd>D</kbd> <kbd>F</kbd>(또는 Space) <kbd>J</kbd> <kbd>K</kbd> — 아래 판정선에 닿을 때 누르기<br>
-    모바일: 레인 터치 / 플릭노트는 위로 쓸어올리기 필수<br>
-    🟦 파랑 네모 막대 = 탭 &nbsp; 🟢 초록 긴바 = 홀드(끝까지 누르고 있기) &nbsp; 🟥 빨강 화살막대 = 플릭 — 모바일은 위로 쓸어올리기, 키보드는 짧게 끊어치듯 눌렀다 떼기 (그냥 누르기만 하면 MISS!)<br>
-    판정: PERFECT ±45ms / GREAT ±90ms / GOOD ±130ms<br>
+    <b>🎮 조작법 (8칸)</b><br>
+    키보드: <kbd>D</kbd> <kbd>F</kbd> <kbd>J</kbd> <kbd>K</kbd> <kbd>C</kbd> <kbd>V</kbd> <kbd>N</kbd> <kbd>M</kbd> — 아래 판정선에 닿을 때 누르기<br>
+    모바일: 칸 터치 / 플릭은 위로 가볍게 밀어 올리기<br>
+    🟦 파랑 네모 막대 = 탭 &nbsp; 🟢 초록 긴바 = 홀드(끝까지 누르고 있기) &nbsp; 🟨 노랑 긴바 = 좌우 슬라이드 &nbsp; 🟥 빨강 화살막대 = 플릭<br>
+    판정: PERFECT ±100ms / GREAT ±180ms / GOOD ±250ms<br>
     📺 유튜브 영상을 게임 음원으로 재생 (판정 여유 적용, 시작 안 되면 탭 버튼). 박자가 어긋나면 곡을 고른 뒤 ⚙ BPM 버튼으로 조절<br>
     ※ 유튜브 링크를 보내주면 곡으로 등록해줌. 본인 소장 mp3는 📁 버튼으로 직접 업로드 가능 (개인 소장용)
   </div>
@@ -510,7 +510,7 @@ function analyzeBuffer(ab,bpm){
   const sn=Math.round(t/grid)*grid;
   if(Math.abs(t-sn)<=0.07)t=sn; // 16분 그리드 스냅
   if(t<1.0||t>dur-1.0)continue;
-  const lane=argmax(f);
+  const lane=Math.min(7,argmax(f)*2+((f>>2)&1));
   const e0=eAll[f]||1e-9;
   const maxScan=Math.min(frames-f-1,Math.round(2.5*sr/hop));
   let k=0;
@@ -531,7 +531,7 @@ function analyzeBuffer(ab,bpm){
 // 분석 온셋 → 난이도별 채보 (강도 분위수로 밀도 조절, 빡세게 유지)
 function buildFromOnsets(song,D,diffKey){
  const notes=[];
- const push=(lane,time,dur,kind,dir)=>notes.push({lane,time,dur:dur||0,kind,judged:false,holdState:(kind==='hold')?'wait':null,tailJudged:false,dir:dir||'up'});
+ const push=(lane,time,dur,kind,dir,endLane)=>notes.push({lane,time,dur:dur||0,kind,judged:false,holdState:(kind==='hold'||kind==='slide')?'wait':null,tailJudged:false,dir:dir||'up',endLane:endLane??lane});
  const ons=[...song._onsets].sort((a,b)=>a.t-b.t);
  if(!ons.length)return [];
  const keepFrac={EASY:0.40,NORMAL:0.62,HARD:0.82,EXPERT:0.93,MASTER:1.0}[diffKey]||0.5;
@@ -542,12 +542,19 @@ function buildFromOnsets(song,D,diffKey){
   if(o.str<cut)continue;
   let kind=o.kind;
   if(kind==='flick'&&Math.random()>Math.min(1,D.flickRate*4))kind='tap';
+    let endLane=o.lane;
+    if(kind==='hold'&&D.mult>=1.2&&Math.random()<0.32){
+     kind='slide';
+     const delta=Math.random()<0.5?-1:1;
+     endLane=Math.max(0,Math.min(7,o.lane+delta*(1+Math.floor(Math.random()*3))));
+     if(endLane===o.lane)kind='hold';
+    }
   let dir=o.dir||'up';
   if(kind==='flick'&&diffKey!=='HARD'&&diffKey!=='EXPERT'&&diffKey!=='MASTER')dir='up';
-  push(o.lane,o.t,o.dur||0,kind,dir);
+  push(o.lane,o.t,o.dur||0,kind,dir,endLane);
   if(D.doubleRate>0.3){ // HARD+ 강박 거울 동시치기
    const bar=Math.round(o.t/beat)%4;
-   if(bar===0&&Math.random()<D.doubleRate*0.5)push(3-o.lane,o.t,0,'tap','up');
+   if(bar===0&&Math.random()<D.doubleRate*0.5)push(7-o.lane,o.t,0,'tap','up');
   }
  }
  return filterNotes(notes,D);
@@ -555,7 +562,7 @@ function buildFromOnsets(song,D,diffKey){
 /* ============ 채보 생성 ============ */
 function buildChart(song,diffKey){
  const D=DIFFS[diffKey];const beat=60/song.bpm;const notes=[];
- const push=(lane,time,dur,kind)=>notes.push({lane,time,dur:dur||0,kind,judged:false,holdState:kind==='hold'?'wait':null,tailJudged:false});
+ const push=(lane,time,dur,kind,endLane)=>notes.push({lane,time,dur:dur||0,kind,judged:false,holdState:(kind==='hold'||kind==='slide')?'wait':null,tailJudged:false,endLane:endLane??lane});
  if(song._onsets&&song._onsets.length)return buildFromOnsets(song,D,diffKey); // 분석 채보 우선
  if(song.isCustom||song.isStream||song.isYT){
   // 커스텀/스트리밍: 계단 흐름 위주 — 같은 방향으로 이어가다 벽에서 반사
@@ -568,20 +575,26 @@ function buildChart(song,diffKey){
     if(sr<0.35&&dir!==0)step=dir; // 계단 이어가기
     else if(sr<0.55){dir=Math.random()<0.5?-1:1;step=dir} // 새 계단
     else{dir=0;step=[-2,-1,1,2][Math.floor(Math.random()*4)]}
-    lane=Math.max(0,Math.min(3,lane+step));
-    if(lane===0||lane===3)dir=-dir; // 벽 반사
+    lane=Math.max(0,Math.min(7,lane+step));
+    if(lane===0||lane===7)dir=-dir; // 벽 반사
     const t=b*beat;const r=Math.random();
     let kind='tap';
     if(D.hold&&r<0.12)kind='hold';
     else if(D.flick&&r<0.12+D.flickRate)kind='flick';
-    push(lane,t,kind==='hold'?beat*2:0,kind);
-    if(b%8===0&&D.doubleRate>=0.2)push(3-lane,t,0,'tap'); // 강박 거울 동시치기
-    else if(Math.random()<D.doubleRate*0.5)push(3-lane,t,0,'tap');
+    let endLane=lane;
+    if(kind==='hold'&&D.mult>=1.2&&Math.random()<0.28){
+     kind='slide';
+     endLane=Math.max(0,Math.min(7,lane+(Math.random()<0.5?-1:1)*(1+Math.floor(Math.random()*3))));
+     if(endLane===lane)kind='hold';
+    }
+    push(lane,t,kind==='hold'||kind==='slide'?beat*2:0,kind,endLane);
+    if(b%8===0&&D.doubleRate>=0.2)push(7-lane,t,0,'tap'); // 강박 거울 동시치기
+    else if(Math.random()<D.doubleRate*0.5)push(7-lane,t,0,'tap');
     // 클라이막스 연타: 박 후반부 16분 추가타 (타타타타!)
     if(D.rush&&(b%16)>=10&&Math.random()<D.rushRate){
      let rl=lane+(dir!==0?dir:(Math.random()<0.5?1:-1));
-     if(rl<0||rl>3)rl=3-lane;
-     if(rl===lane)rl=(lane+2)%4;
+    if(rl<0||rl>7)rl=7-lane;
+    if(rl===lane)rl=(lane+4)%8;
      push(rl,t+beat*0.5,0,'tap');
     }
    }
@@ -594,7 +607,7 @@ function buildChart(song,diffKey){
   const steps=Math.floor(totalDur/(beat*stepBeat));
   const pits=song.melody.filter(m=>m>0);
   const lo=Math.min(...pits),hi=Math.max(...pits);
-  const pitchLane=m=>Math.max(0,Math.min(3,Math.round((m-lo)/((hi-lo)||1)*3)));
+  const pitchLane=m=>Math.max(0,Math.min(7,Math.round((m-lo)/((hi-lo)||1)*7)));
   let s=8,barCount=0,prevLane=2; // 앞 4박 여유
   while(s<steps-8){
    const mel=song.melody[s%loopLen];
@@ -607,12 +620,12 @@ function buildChart(song,diffKey){
     while(run<8&&song.melody[(s+run)%loopLen]===mel)run++;
     if(run>=3&&D.hold){
      push(lane,time,Math.min(4,run)*stepBeat*beat,'hold');
-     if(barPos===0&&Math.random()<D.doubleRate*0.5)push(3-lane,time,0,'tap');
+    if(barPos===0&&Math.random()<D.doubleRate*0.5)push(7-lane,time,0,'tap');
      prevLane=lane;s+=run;continue;
     }
     // 마디 첫박: 거울 동시치기 — 예쁜 대칭 점프
     if(barPos===0&&D.doubleRate>0&&Math.random()<D.doubleRate+0.15){
-     const pair=(barCount%2===0)?[0,3]:[1,2];
+    const pair=(barCount%2===0)?[0,7]:[3,4];
      push(pair[0],time,0,'tap');push(pair[1],time,0,'tap');
      barCount++;prevLane=pair[1];s++;continue;
     }
@@ -629,18 +642,18 @@ function buildChart(song,diffKey){
     if(diffKey==='EASY'&&barPos%2===1)p*=0.4;
     if(Math.random()<p||barPos%4===0){
      let l=lane;
-     if(Math.random()<0.12)l=Math.max(0,Math.min(3,lane+(Math.random()<0.5?-1:1))); // 살짝 흔들기
+    if(Math.random()<0.12)l=Math.max(0,Math.min(7,lane+(Math.random()<0.5?-1:1))); // 살짝 흔들기
      push(l,time,0,kind);
-     if(barPos%8===4&&Math.random()<D.doubleRate)push((lane+2)%4,time,0,'tap');
+    if(barPos%8===4&&Math.random()<D.doubleRate)push((lane+4)%8,time,0,'tap');
     }
-    if((diffKey==='EXPERT'||diffKey==='MASTER')&&barPos===8&&Math.random()<0.4)push((lane+1)%4,time,0,'tap');
+    if((diffKey==='EXPERT'||diffKey==='MASTER')&&barPos===8&&Math.random()<0.4)push((lane+1)%8,time,0,'tap');
     // 클라이막스 연타 (HARD+: 멜로디 뒤에 붙는 16분 추가타 — 타타타타! MASTER는 구간 확대)
     if(D.rush&&(s%64)>=(diffKey==='MASTER'?32:40)&&Math.random()<D.rushRate){
      let rd=lane-prevLane;
      rd=rd===0?(Math.random()<0.5?1:-1):Math.max(-1,Math.min(1,rd));
      let rl=lane+rd;
-     if(rl<0||rl>3)rl=3-lane;
-     if(rl===lane)rl=(lane+2)%4;
+    if(rl<0||rl>7)rl=7-lane;
+    if(rl===lane)rl=(lane+4)%8;
      push(rl,time+stepBeat*beat*0.5,0,((diffKey==='EXPERT'||diffKey==='MASTER')&&Math.random()<0.12)?'flick':'tap');
     }
     prevLane=lane;
@@ -648,9 +661,9 @@ function buildChart(song,diffKey){
    }else{
     // 쉼표: 킥 박자에 베이스 노트 (리듬 뼈대)
     if(barPos%4===0&&Math.random()<D.mult*0.5){
-     push([1,2,0,3][barCount%4],time,0,'tap');
+    push([1,3,5,7][barCount%4],time,0,'tap');
     }else if(D.streamRate>0&&barPos%2===1&&Math.random()<D.streamRate){
-     push(Math.floor(Math.random()*4),time,0,Math.random()<D.flickRate?'flick':'tap');
+    push(Math.floor(Math.random()*8),time,0,Math.random()<D.flickRate?'flick':'tap');
     }
     s++;
    }
@@ -673,7 +686,7 @@ function filterNotes(arr,D){
   const isChord=gapAny<0.03&&gapLane>=D.minGap; // 진짜 동시치기만 유지 (같은 레인 촘촘 겹침은 제거)
   if(!isChord&&(gapLane<D.minGap||gapAny<D.globalGap))continue;
   out.push(n);lastLane[n.lane]=n.time;lastAny=n.time;
-  blocked[n.lane]=n.kind==='hold'?n.time+n.dur+0.10:n.time+0.03; // 홀드 꼬리+재입력 여유 확보
+  blocked[n.lane]=isLongNote(n)?n.time+n.dur+0.10:n.time+0.03; // 긴 노트 꼬리+재입력 여유 확보
  }
  return out;
 }
@@ -711,11 +724,11 @@ function fitCanvas(){
  ctx.setTransform(DPR,0,0,DPR,0,0);
 }
 addEventListener('resize',()=>{if(!document.getElementById('game-screen').classList.contains('hidden'))fitCanvas()});
-const LANES=4,KEYS=['d','f','j','k'];
+const LANES=8,KEYS=['d','f','j','k','c','v','n','m'];
 let notes=[],songStart=0,songPlaying=false,raf=0,lastFrameT=0,cdTimer=null;
 let score=0,combo=0,maxCombo=0,life=100,counts={perfect:0,great:0,good:0,miss:0};
 let speed=5,autoPlay=false,isCustomPlaying=false,customBuffer=null,customSource=null;
-let laneFlash=[0,0,0,0,0],effects=[],paused=false,pauseTime=0;
+let laneFlash=Array(LANES).fill(0),effects=[],paused=false,pauseTime=0;
 let judgeEl=document.getElementById('judgePopup');
 // 비주얼 헬퍼: 파티클·콤보팝·색상
 let particles=[];
@@ -985,7 +998,7 @@ document.getElementById('fsBtn').onclick=()=>{
 document.addEventListener('fullscreenchange',()=>{fitCanvas()});
 
 /* ============ 입력 ============ */
-const keyToLane={d:0,f:1,' ':1,j:2,k:3};
+const keyToLane={d:0,f:1,j:2,k:3,c:4,v:5,n:6,m:7,' ':1};
 const flickDown={}; // 키보드 플릭용: 레인별 키 누른 시각
 addEventListener('keydown',e=>{
  if(document.getElementById('game-screen').classList.contains('hidden'))return;
@@ -1009,12 +1022,12 @@ addEventListener('keyup',e=>{
 function canvasLaneFromEvent(e){
  const r=cv.getBoundingClientRect();
  const x=(e.touches?e.touches[0].clientX:e.clientX)-r.left;
- return Math.max(0,Math.min(3,Math.floor(x/r.width*4)));
+ return Math.max(0,Math.min(7,Math.floor(x/r.width*8)));
 }
 const touchMap={}; // 멀티터치 대응: pointerId별 {lane, 시작Y, 시작시각}
 cv.addEventListener('pointerdown',e=>{
  const r=cv.getBoundingClientRect();
- const l=Math.max(0,Math.min(3,Math.floor((e.clientX-r.left)/r.width*4)));
+ const l=Math.max(0,Math.min(7,Math.floor((e.clientX-r.left)/r.width*8)));
  touchMap[e.pointerId]={lane:l,y:e.clientY,t:performance.now()};
  holdOn(l);holdMap[e.pointerId]=l;
  pressLane(l); // 탭/홀드만 판정 (플릭은 스와이프해야 맞음)
@@ -1030,17 +1043,23 @@ cv.addEventListener('pointercancel',endTouch);
 cv.addEventListener('pointermove',e=>{
  const info=touchMap[e.pointerId];if(!info)return;
  const dy=info.y-e.clientY;
- if(dy>24&&(performance.now()-info.t)<600){ // 위로 빠르게 쓸어올려야 플릭 인정
+ const r=cv.getBoundingClientRect();
+ const dx=e.clientX-(r.left+(info.lane+0.5)*r.width/LANES);
+ if(Math.abs(dx)>18&&Math.abs(dx)>Math.abs(dy)*0.8&&(performance.now()-info.t)<900){
+  trySlide(info.lane,dx);delete touchMap[e.pointerId];return;
+ }
+ if(dy>16&&(performance.now()-info.t)<900){ // 위로 가볍게 밀어도 플릭 인정
   tryFlick(info.lane);delete touchMap[e.pointerId];
  }
 });
 
+function isLongNote(n){return n.kind==='hold'||n.kind==='slide'}
 function nearestNote(lane,t,skipFlick){
  let best=null,bestD=1e9;
  for(const n of notes){
   if(n.lane!==lane||n.judged)continue;
   if(skipFlick&&n.kind==='flick')continue; // 플릭은 누르기만으로 맞지 않음
-  if(n.kind==='hold'&&n.holdState==='holding')continue;
+  if(isLongNote(n)&&n.holdState==='holding')continue;
   const d=Math.abs(n.time-t);
   if(d<bestD){bestD=d;best=n}
  }
@@ -1064,8 +1083,20 @@ function tryFlick(lane){
  const j=judgeWindow(dt);
  if(j)hitNote(note,j,lane);
 }
+function trySlide(lane,dx){
+ if(!songPlaying||paused||autoPlay)return;
+ const t=songTime();
+ for(const note of notes){
+  if(note.kind!=='slide'||note.judged||note.lane!==lane)continue;
+  const dt=note.time-t;
+  if(Math.abs(dt)<=0.24){
+   const direction=note.endLane>note.lane?1:-1;
+   if(Math.sign(dx)===direction||Math.abs(dx)>70){hitNote(note,judgeWindow(dt)||'good',lane);return}
+  }
+ }
+}
 function missLimit(){return (selectedSong&&selectedSong.loose)?0.17:0.13}
-function judgeWindow(dt){const a=Math.abs(dt);const w=(selectedSong&&selectedSong.loose)?[0.07,0.12,0.17]:[0.045,0.09,0.13];if(a<=w[0])return'perfect';if(a<=w[1])return'great';if(a<=w[2])return'good';return null}
+function judgeWindow(dt){const a=Math.abs(dt);const w=(selectedSong&&selectedSong.loose)?[0.10,0.18,0.25]:[0.08,0.15,0.22];if(a<=w[0])return'perfect';if(a<=w[1])return'great';if(a<=w[2])return'good';return null}
 function pressLane(lane){
  laneFlash[lane]=1;
  if(!songPlaying||paused)return;
@@ -1084,7 +1115,7 @@ function releaseLane(lane){
  const t=songTime();
  // 홀드 꼬리 처리
  for(const n of notes){
-  if(n.kind==='hold'&&n.holdState==='holding'&&n.lane===lane){
+   if(isLongNote(n)&&n.holdState==='holding'&&n.lane===lane){
    const tailT=n.time+n.dur;
    const dt=tailT-t;
    if(Math.abs(dt)<=0.15){tailHit(n,'perfect')}else{tailHit(n,'miss')} // 일찍 떼면 무조건 MISS (꾹 눌러야 점수)
@@ -1092,7 +1123,7 @@ function releaseLane(lane){
  }
 }
 function hitNote(n,j,lane){
- if(n.kind==='hold'){
+ if(isLongNote(n)){
   n.judged=true;n.holdState='holding';n.holdLane=lane;
   applyJudge(j);effects.push({lane,time:performance.now(),txt:j});spawnBurst(lane,jColor(j),8);spawnFloat(lane,combo+' COMBO',jColor(j));
   hitSE(true);popup(j);
@@ -1143,12 +1174,12 @@ function loop(){
  // 오토플레이
  if(autoPlay){
   for(const n of notes){
-   if(!n.judged&&t>=n.time){n.judged=true;if(n.kind==='hold'){n.holdState='done';n.tailJudged=true}applyJudgeAuto(n);effects.push({lane:n.lane,time:performance.now(),txt:'perfect'});spawnBurst(n.lane,'#ffd700',8);spawnFloat(n.lane,combo+' COMBO','#ffd700');popup('perfect')}
+  if(!n.judged&&t>=n.time){n.judged=true;if(isLongNote(n)){n.holdState='done';n.tailJudged=true}applyJudgeAuto(n);effects.push({lane:n.lane,time:performance.now(),txt:'perfect'});spawnBurst(n.lane,'#ffd700',8);spawnFloat(n.lane,combo+' COMBO','#ffd700');popup('perfect')}
   }
  }
  // 홀드 실패(놓침) 체크
  for(const n of notes){
-   if(n.kind==='hold'&&n.holdState==='holding'){
+  if(isLongNote(n)&&n.holdState==='holding'){
     // 실제로 꾹 누르고 있을 때만 꼬리 성공 (안 누르면 점수 없음)
     if(t>=n.time+n.dur-0.05&&!n.tailJudged){
      if(isHeld(n.lane)){n.holdState='done';n.tailJudged=true;applyJudgeSimple('perfect');spawnBurst(n.lane,'#4ade80',10);spawnFloat(n.lane,combo+' COMBO','#4ade80');popup('perfect')}
@@ -1156,8 +1187,8 @@ function loop(){
      n.holdState='done';n.tailJudged=true;combo=0;counts.miss++;life=Math.max(0,life-8);popup('miss');hitSE(false);
     }
    }
-  if(!n.judged&&n.kind!=='hold'&&t-n.time>missLimit()){n.judged=true;combo=0;counts.miss++;life=Math.max(0,life-8);popup('miss');hitSE(false)}
-  if(n.kind==='hold'&&!n.judged&&t-n.time>missLimit()){n.judged=true;n.holdState='done';n.tailJudged=true;combo=0;counts.miss++;life=Math.max(0,life-8);popup('miss')}
+  if(!n.judged&&!isLongNote(n)&&t-n.time>missLimit()){n.judged=true;combo=0;counts.miss++;life=Math.max(0,life-8);popup('miss');hitSE(false)}
+  if(isLongNote(n)&&!n.judged&&t-n.time>missLimit()){n.judged=true;n.holdState='done';n.tailJudged=true;combo=0;counts.miss++;life=Math.max(0,life-8);popup('miss')}
  }
  // 라이프 0이어도 끝까지 (프세카처럼 버티기 가능)
  // 종료 체크
@@ -1276,8 +1307,8 @@ function draw(t,frameDt){
  const noteW=Math.min(laneW*0.86,170); // 노트 막대 너비 (가로 모드 상한)
  for(const n of notes){
   const dtn=n.time-t;
-  const tailDtn=n.kind==='hold'?n.time+n.dur-t:dtn;
-  const pastTail=n.kind==='hold'?n.tailJudged&&tailDtn<-0.6: dtn<-0.6;
+  const tailDtn=isLongNote(n)?n.time+n.dur-t:dtn;
+  const pastTail=isLongNote(n)?n.tailJudged&&tailDtn<-0.6: dtn<-0.6;
   if(dtn>scrollWin+0.15||pastTail)continue;
   const pp=perspP(dtn,scrollWin); // 원근 진행도
   const y=topY+(judgeY-topY)*perspE(pp);
@@ -1285,9 +1316,9 @@ function draw(t,frameDt){
   const x=laneXat(n.lane,W,laneW,pp);
   const fade=Math.max(0,Math.min(1,(scrollWin+0.1-dtn)/0.3)); // 상단에서 페이드인 (뚝 나타나지 않음)
   ctx.globalAlpha=fade;
-  const col=n.kind==='hold'?'#4ade80':n.kind==='flick'?'#f43f5e':'#38bdf8';
+  const col=n.kind==='slide'?'#facc15':n.kind==='hold'?'#4ade80':n.kind==='flick'?'#f43f5e':'#38bdf8';
   // 잔상: 진행 방향 뒤(위쪽)로 그라데이션 트레일 → 미끄러지는 느낌
-  const showTrail=n.kind==='hold'?(n.holdState==='holding'||!n.judged):!n.judged;
+  const showTrail=isLongNote(n)?(n.holdState==='holding'||!n.judged):!n.judged;
   if(showTrail&&y>-20&&y<H+40){
    const tw=noteW*ps,th=(trailLen+20)*ps;
    const tg=ctx.createLinearGradient(0,y-th,0,y+6);
@@ -1295,22 +1326,22 @@ function draw(t,frameDt){
    ctx.fillStyle=tg;
    ctx.beginPath();ctx.roundRect(x-tw/2,y-th,tw,th,10*ps);ctx.fill();
   }
-  if(n.kind==='hold'){
+  if(isLongNote(n)){
    if(!n.tailJudged){
     const tailT=n.time+n.dur;
     const ppT=perspP(tailT-t,scrollWin);
     const yTail=topY+(judgeY-topY)*perspE(ppT);
-    const sTail=perspS(ppT),xTail=laneXat(n.lane,W,laneW,ppT);
+    const sTail=perspS(ppT),xTail=laneXat(n.endLane??n.lane,W,laneW,ppT);
     const yHead=n.holdState==='holding'?judgeY:y; // 잡은 뒤에는 헤드가 판정선에 고정
     const sHead=n.holdState==='holding'?1:ps;
     const xHead=n.holdState==='holding'?laneXat(n.lane,W,laneW,1):x;
     const hwH=noteW*0.62*sHead,hwT=noteW*0.62*sTail; // 홀드 바는 헤드보다 살짝 좁게 (프세카식)
     const top=Math.min(yHead,yTail),hh=Math.abs(yHead-yTail)+30*sHead;
-    ctx.save();ctx.shadowColor='#4ade80';ctx.shadowBlur=12;
+    ctx.save();ctx.shadowColor=col;ctx.shadowBlur=12;
     const hg=ctx.createLinearGradient(xHead-hwH,0,xHead+hwH,0);
-    hg.addColorStop(0,'rgba(34,197,94,.35)');
-    hg.addColorStop(0.5,n.holdState==='holding'?'#86efac':'rgba(74,222,128,.95)');
-    hg.addColorStop(1,'rgba(34,197,94,.35)');
+    hg.addColorStop(0,hexA(col,.35));
+    hg.addColorStop(0.5,n.holdState==='holding'?'#fff':hexA(col,.95));
+    hg.addColorStop(1,hexA(col,.35));
     ctx.fillStyle=hg;
     ctx.beginPath();ctx.moveTo(xHead-hwH/2,yHead);ctx.lineTo(xHead+hwH/2,yHead);ctx.lineTo(xTail+hwT/2,yTail);ctx.lineTo(xTail-hwT/2,yTail);ctx.closePath();ctx.fill();
     ctx.shadowBlur=0;
@@ -1322,10 +1353,10 @@ function draw(t,frameDt){
     ctx.restore();
    }
    if(!n.judged){
-    drawRectNote(x,y,noteW*ps,'#4ade80',ps*(1+0.22*Math.max(0,1-Math.abs(dtn)/0.12)));
-   }else if(n.holdState==='holding'){
+    drawRectNote(x,y,noteW*ps,col,ps*(1+0.22*Math.max(0,1-Math.abs(dtn)/0.12)));
+  }else if(n.holdState==='holding'){
     // 홀드 중 맥동 이펙트
-    ctx.globalAlpha=fade*0.45;ctx.fillStyle='#4ade80';
+    ctx.globalAlpha=fade*0.45;ctx.fillStyle=col;
     ctx.beginPath();ctx.arc(x,judgeY,28+Math.sin(now/100)*4,0,7);ctx.fill();ctx.globalAlpha=fade;
    }
   }else if(n.kind==='flick'){
