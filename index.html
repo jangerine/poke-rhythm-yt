@@ -767,7 +767,7 @@ function ensureYT(song){
  return loadYTApi().then(()=>new Promise((resolve,reject)=>{
   try{
    if(!ytPlayer){
-    ytPlayer=new window.YT.Player('ytPlayer',{width:160,height:90,videoId:song.ytId,playerVars:{playsinline:1,rel:0,modestbranding:1,controls:0,disablekb:1},events:{onStateChange:onYTState}});
+    ytPlayer=new window.YT.Player('ytPlayer',{width:160,height:90,videoId:song.ytId,playerVars:{playsinline:1,autoplay:1,origin:location.origin,rel:0,modestbranding:1,controls:0,disablekb:1},events:{onReady:onYTReady,onStateChange:onYTState}});
    }else if(ytPlayer.getVideoData&&ytPlayer.getVideoData().video_id!==song.ytId){
     ytPlayer.loadVideoById(song.ytId);
    }
@@ -783,6 +783,12 @@ function ensureYT(song){
   };
   wait();
  }));
+}
+function onYTReady(e){
+ const frame=e.target.getIframe&&e.target.getIframe();
+ if(!frame)return;
+ frame.setAttribute('allow','autoplay; encrypted-media; picture-in-picture');
+ frame.setAttribute('allowfullscreen','');
 }
 function onYTState(e){
  const YT=window.YT;
@@ -1271,7 +1277,8 @@ function draw(t,frameDt){
  for(const n of notes){
   const dtn=n.time-t;
   const tailDtn=n.kind==='hold'?n.time+n.dur-t:dtn;
-  if(dtn>scrollWin+0.15||tailDtn<-0.6)continue;
+  const pastTail=n.kind==='hold'?n.tailJudged&&tailDtn<-0.6: dtn<-0.6;
+  if(dtn>scrollWin+0.15||pastTail)continue;
   const pp=perspP(dtn,scrollWin); // 원근 진행도
   const y=topY+(judgeY-topY)*perspE(pp);
   const ps=perspS(pp); // 원근 크기
