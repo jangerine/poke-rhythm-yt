@@ -1270,7 +1270,8 @@ function draw(t,frameDt){
  const noteW=Math.min(laneW*0.86,170); // 노트 막대 너비 (가로 모드 상한)
  for(const n of notes){
   const dtn=n.time-t;
-  if(dtn>scrollWin+0.15||dtn<-0.6)continue;
+  const tailDtn=n.kind==='hold'?n.time+n.dur-t:dtn;
+  if(dtn>scrollWin+0.15||tailDtn<-0.6)continue;
   const pp=perspP(dtn,scrollWin); // 원근 진행도
   const y=topY+(judgeY-topY)*perspE(pp);
   const ps=perspS(pp); // 원근 크기
